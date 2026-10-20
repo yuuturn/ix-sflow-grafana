@@ -138,48 +138,58 @@ TRUNCATE ip_asn;      -- 次の refresh_ip_asn() で再構築される
 ## 5.1 sFlow の取得方向
 
 `sflow sampling-rate <rate> {in|out}` で方向を指定でき、省略時は `in`。
-本構成は両ポートとも `in` を使う:
+標準構成は **LAN ポートの `in` と `out`** を有効にする:
 
 | ポート | 方向 | 取得できる方向 |
 |--------|------|---------------|
-| `GigaEthernet2`（LAN） | `in` | アップロード |
-| `GigaEthernet0`（WAN） | `in` | ダウンロード（4in6 のまま） |
+| `GigaEthernet2`（LAN） | `in` | アップロード（内部 → 外部） |
+| `GigaEthernet2`（LAN） | `out` | ダウンロード（外部 → 内部） |
 
-両方とも `in` なので二重計上は起きない。LAN を `in` のみで運用すると
-ダウンロードが 0 件になる（実測で確認）。
+同じパケットが両方に現れることはないので二重計上は起きない。LAN を `in` のみで
+運用するとダウンロードが 0 件になる（実測で確認）。
 
-WAN `in` を採るのは、ダウンロードを**カプセル化された生の状態**で受け取り
-`decapd` に渡すため（§5.2）。LAN `out` を使えば素の IPv4 が取れて `decapd` は
-不要になるが、トンネル側の情報（NAPT 後のアドレス、4in6 オーバーヘッド、
-BR 分布、ルータ自身の通信）は失われる。**両方を同時に有効にするとダウンロードが
-二重計上される**ので、どちらか一方を選ぶこと。
+サンプリングはルータの転送処理を通った後に行われるため、`out` で見える
+ダウンロードは **NAPT 後・デカプセル後の IPv4** で、宛先は LAN ホストの実
+アドレスになる。そのため MAP-E のデカプセルは不要（§5.3）。
 
-## 5.2 sFlow の受け口（単一コレクタ対策）
+WAN 側の `in` を併用すると、ダウンロードが「WAN `in` の 4in6」と
+「LAN `out` の IPv4」で二重計上される。WAN を使うのは `out` が無い機種だけ。
 
-IX2207 は **sFlow コレクタを1つしか持てない**（2つ目を設定すると上書きされる。
-機種によっては複数指定できる場合があるので `show sflow information` で確認）。
-さらに MAP-E のデキャップには生のサンプルが必要なので、入口を `decapd` にして
-pmacct へ中継する構成にした。
+## 5.2 sFlow の受け口
+
+標準構成では装置から sfacctd へ直接送る。
+
+```
+ルータ ──udp/6343──▶ sfacctd（pmacct）──▶ PostgreSQL
+```
+
+`out` が使えないファームウェア向けに、`decapd` を挟む構成を任意で用意している
+（`scripts/install.sh --with-decapd`）。
 
 ```
 ルータ ──udp/6343──▶ decapd ──┬──▶ 127.0.0.1:6345  sfacctd（pmacct）
-                              └──▶ 自前でデキャップ → flows_decap
+                              └──▶ デカプセル → flows_decap
 ```
 
-| ポート | 待ち受け | 役割 |
-|--------|---------|------|
-| 6343/udp | decapd | 装置からの sFlow 受信（唯一のコレクタ） |
-| 6345/udp | sfacctd | decapd から中継されたデータ |
+| 構成 | 6343/udp | 6345/udp | 対象 |
+|------|----------|----------|------|
+| 標準（既定） | sfacctd | — | LAN `in` + `out` が使える装置 |
+| `--with-decapd` | decapd | sfacctd | `out` が使えず WAN `in` しかない装置 |
 
-`decapd` は systemd で `Restart=always`（5秒）。停止すると可視化全体が止まるため、
-外部監視ツール（Zabbix 等）での監視を推奨。
+IX シリーズは **sFlow コレクタを1つしか持てない**（2つ目を設定すると上書きされる。
+機種によっては複数指定できる場合があるので `show sflow information` で確認）。
+そのためフォールバック構成では `decapd` が 6343 を受けて sfacctd へ中継する。
 
 ## 5.3 MAP-E の扱い
 
-IPv4 over IPv6（MAP-E）のパケットは外側 IPv6 ヘッダだけが sFlow に乗り、
-pmacct ではプロトコル 4（IP-in-IP）として記録される。pmacct のトンネル
-デコードは sFlow 非対応（`CONFIG-KEYS` で `tunnel_0` が `NO_SFACCTD`）のため、
-`decapd` がサンプルヘッダを自前で解析して内側 IPv4 の 5-tuple を取り出す。
+標準構成では、LAN `out` の時点で既にデカプセルされた IPv4 が見えるため
+MAP-E を意識する必要はない。
+
+フォールバック構成（WAN `in`）では、IPv4 over IPv6 のパケットは外側 IPv6
+ヘッダだけが sFlow に乗り、pmacct ではプロトコル 4（IP-in-IP）として記録される。
+pmacct のトンネルデコードは sFlow 非対応（`CONFIG-KEYS` で `tunnel_0` が
+`NO_SFACCTD`）のため、`optional/decapd/` の daemon がサンプルヘッダを自前で
+解析して内側 IPv4 の 5-tuple を取り出す。
 
 `sflow max-header-size 128` であれば
 Ethernet(14) + IPv6(40) + 内側 IPv4(20) + トランスポートヘッダ が収まり、
@@ -187,21 +197,26 @@ Ethernet(14) + IPv6(40) + 内側 IPv4(20) + トランスポートヘッダ が�
 
 ### データの流れ
 
+`flows_decap` はフォールバック構成でのみ書き込まれる。標準構成では空のまま。
+
 | 経路 | 内容 |
 |------|------|
 | `flows` | pmacct が記録した通常のフロー＋外側 MAP-E レコード |
-| `flows_decap` | decapd が復元した内側 IPv4 フロー |
+| `flows_decap` | decapd が復元した内側 IPv4 フロー（フォールバック時のみ） |
 | `v_flows` | 両者を統合。デキャップ実績のあるバケットは外側レコードを**除外**（二重計上防止）し、デキャップ実績が無いバケットは外側をそのまま見せる（データ欠落防止） |
 
 ### ラベル
+
+フォールバック構成でのみ現れる。
 
 | 状態 | `dst_asn` | 表示 |
 |------|-----------|------|
 | デキャップ済み | `-2` | `(MAP-E 経由のダウンロード)` |
 | デキャップ前の外側 | `-1` | `MAP-E (IPv4-in-IPv6)` |
 
-デキャップ行は定義上すべて WAN ingress = `inbound`。
-内部ホストは MAP-E の後段で NAPT されるため特定できない（宛先は WAN の公開IP）。
+デキャップ行は定義上すべて WAN ingress = `inbound`。内部ホストは MAP-E の後段で
+NAPT されるため特定できない（宛先は WAN の公開IP）。これが標準構成（LAN `out`）を
+既定にしている理由でもある。
 
 ## 6. Sankey の設計
 

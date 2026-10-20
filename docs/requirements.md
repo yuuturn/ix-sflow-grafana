@@ -42,7 +42,7 @@ Akvorado を動かせる VM がないため、同等の情報をより軽量な�
 | FR-8 | ランキング表示 | 宛先/送信元/ポートのテーブルパネル |
 | FR-9 | ASN データ自動更新 | systemd timer（週次） |
 | FR-10 | 保持期間管理 | `prune_traffic()` + 日次 timer |
-| FR-11 | MAP-E (IPv4-in-IPv6) のデキャップ | `decapd` が内側 5-tuple を復元 → `flows_decap` |
+| FR-11 | MAP-E 環境で IPv4 を LAN ホスト単位に集計 | LAN `out` で NAPT 後の IPv4 を取得（`with-decapd` 時のみ `decapd` → `flows_decap`） |
 
 ## 5. 非機能要件
 
@@ -70,7 +70,7 @@ Akvorado を動かせる VM がないため、同等の情報をより軽量な�
 | リソース | 実測（1Gbps 回線 / サンプリング 1:1000） | 推奨最低 |
 |---------|------------------------------------------|---------|
 | CPU | 負荷平均 0.3（4コア） | 2 vCPU |
-| メモリ | 1.4 GB（pg 0.3 / grafana 0.2 / decapd 0.02 / sfacctd 0.01 ほか） | 2 GB |
+| メモリ | 1.4 GB（pg 0.3 / grafana 0.2 / sfacctd 0.01 ほか） | 2 GB |
 | ディスク | 13 GB（ASN データ 120 MB + 保持 45 日分） | 20 GB |
 | アーキテクチャ | aarch64 で全コンポーネント動作 | amd64 / arm64 |
 
@@ -80,7 +80,7 @@ Akvorado を動かせる VM がないため、同等の情報をより軽量な�
 |------|------|
 | TCP 3000（Grafana） | 競合するアプリがないか |
 | TCP 5432（PostgreSQL） | 127.0.0.1 のみに公開しているので競合しにくいが、既存の PostgreSQL と混同しないこと |
-| **UDP 6343（sFlow）** | decapd が占有する。他の sFlow コレクタと同居不可 |
+| **UDP 6343（sFlow）** | sfacctd が占有する（`--with-decapd` 時は decapd）。他の sFlow コレクタと同居不可 |
 | Docker が使えるか | 未導入なら `install.sh` の前に導入が必要 |
 | sudo が使えるか | apt / systemd / /etc 配下の配置に必要 |
 
@@ -122,13 +122,13 @@ Akvorado を動かせる VM がないため、同等の情報をより軽量な�
 | 事象 | 対応 |
 |------|------|
 | IX2207 の sFlow は `device`（物理IF）配下で設定する | 手順書を実機の構文に更新 |
-| sFlow の方向は `sampling-rate` の第2引数（`in` / `out`）で指定。省略時は `in` | LAN `in`（アップロード）+ WAN `in`（ダウンロード）を有効化 |
+| sFlow の方向は `sampling-rate` の第2引数（`in` / `out`）で指定。省略時は `in` | LAN `in`（アップロード）+ LAN `out`（ダウンロード）を有効化 |
 | LAN の IPv6 がグローバルアドレスのため RFC1918 判定では外部扱い | `lan_prefix` テーブルで LAN の /64 を明示 |
-| MAP-E の IPv4 は IPv6 カプセル化（proto 4）で内側が見えない | 明示ラベルで表示し、誤った AS に紐づけない |
+| MAP-E の IPv4 は IPv6 カプセル化（proto 4）で内側が見えない | LAN `out` なら NAPT 後・デカプセル後の IPv4 が取れる。`out` 非対応機種は明示ラベルで表示し、誤った AS に紐づけない |
 | iptoasn の列順が「AS, 国, 組織」だった（逆に実装していた） | ローダ修正、ASN 再投入 |
 | `ip2num` の IPv6 変換で bigint オーバーフロー | numeric 演算に修正（Python と値一致を検証） |
-| IX2207 の sFlow コレクタは1つだけ（2つ目で上書き） | decapd を入口にして pmacct へ中継（6343 → 6345） |
-| MAP-E の内側 5-tuple は sFlow サンプルに含まれていた | decapd で復元。ダウンロードも実 AS 別に表示可能に |
+| WAN `in` だけで採るとダウンロードの宛先が NAPT 前の公開アドレスになる | 既定を LAN `in`+`out` に変更。WAN 構成は `out` 非対応機種向けの任意機能に |
+| MAP-E の内側 5-tuple は sFlow サンプルに含まれていた | `--with-decapd` 時に decapd で復元（フォールバック） |
 
 ## 11. リスクと対策
 

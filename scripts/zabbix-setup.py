@@ -25,30 +25,11 @@ COMPONENT = "traffic-viz"
 
 # (metric name, units, description)
 ITEMS = [
-    ("trafficviz_decapd_active", "", "decapd (sFlow collector) is active: 1/0"),
     ("trafficviz_sfacctd_active", "", "sfacctd (pmacct) is active: 1/0"),
-    ("trafficviz_decapd_uptime", "uptime", "decapd process uptime in seconds"),
-    ("trafficviz_decapd_flush_age", "s",
-     "seconds since the last decapd collection cycle (heartbeat; advances even "
-     "when there is no MAP-E traffic to write)"),
-    ("trafficviz_decapd_write_age", "s",
-     "informational: seconds since the last successful write to flows_decap "
-     "(grows naturally when MAP-E traffic is sparse - do not alert on it)"),
-    ("trafficviz_decapd_datagrams", "", "sFlow datagrams received (cumulative)"),
-    ("trafficviz_decapd_flow_samples", "", "sFlow flow samples seen (cumulative)"),
-    ("trafficviz_decapd_mape_samples", "", "MAP-E samples decapsulated (cumulative)"),
-    ("trafficviz_decapd_decode_errors", "", "sFlow decode errors (cumulative)"),
-    ("trafficviz_decapd_relay_errors", "", "datagrams that could not be relayed to pmacct"),
-    ("trafficviz_decapd_flush_errors", "", "failed PostgreSQL flushes (cumulative)"),
-    ("trafficviz_decapd_flush_rows", "", "rows written by the last flush"),
-    ("trafficviz_decapd_pending_keys", "", "aggregated keys waiting for the next flush"),
-    ("trafficviz_decapd_relay_enabled", "", "decapd relays to pmacct: 1/0"),
-    ("trafficviz_stats_age", "s", "seconds since decapd refreshed its stats file"),
     ("trafficviz_sflow_ingest_age", "s", "seconds since pmacct last updated the flows table"),
     ("trafficviz_rollup_age", "s", "seconds since the newest 5-minute rollup bucket started"),
     ("trafficviz_db_ok", "", "PostgreSQL reachable from the health check: 1/0"),
     ("trafficviz_flows_1h", "", "raw flow rows in the last hour"),
-    ("trafficviz_decap_rows", "", "total rows in flows_decap"),
     ("trafficviz_ip_asn_rows", "", "entries in the IP->ASN dictionary"),
     ("trafficviz_tv-postgres_running", "", "tv-postgres container running: 1/0"),
     ("trafficviz_tv-grafana_running", "", "tv-grafana container running: 1/0"),
@@ -76,24 +57,15 @@ def last_expr(host, metric, op, value):
 # (description, builder(host) -> expression, priority, comments)
 # priority: 2 Warning, 3 Average, 4 High, 5 Disaster
 TRIGGERS = [
-    ("traffic-viz: decapd stopped",
-     lambda h: last_expr(h, "trafficviz_decapd_active", "<>", 1), 5,
-     "sFlow の入口が停止。全可視化が止まる。systemctl status decapd を確認。"),
     ("traffic-viz: sfacctd stopped",
      lambda h: last_expr(h, "trafficviz_sfacctd_active", "<>", 1), 4,
-     "pmacct が停止。decapd は受けているが DB に書かれない。"),
+     "sfacctd が停止。装置からのサンプルが DB に書かれない。"),
     ("traffic-viz: sFlow ingest stalled",
      lambda h: last_expr(h, "trafficviz_sflow_ingest_age", ">", 300), 4,
-     "pmacct が5分以上 flows を更新していない。装置側の設定・経路・decapd を確認。"),
-    ("traffic-viz: decapd flush stalled",
-     lambda h: last_expr(h, "trafficviz_decapd_flush_age", ">", 180), 4,
-     "decapd が3分以上 DB へ書き込んでいない。"),
+     "sfacctd が5分以上 flows を更新していない。装置側の sFlow 設定・経路・フィルタを確認。"),
     ("traffic-viz: database unreachable",
      lambda h: last_expr(h, "trafficviz_db_ok", "<>", 1), 4,
      "PostgreSQL に接続できない。tv-postgres コンテナを確認。"),
-    ("traffic-viz: decapd flush errors",
-     lambda h: last_expr(h, "trafficviz_decapd_flush_errors", ">", 0), 4,
-     "DB 書き込みに失敗した。権限・容量・接続を確認。"),
     ("traffic-viz: rollup stalled",
      # rollup_age is measured from the START of the newest 5-minute bucket, so
      # a healthy system already swings 0-300 s. The rollup timer runs every
@@ -101,12 +73,6 @@ TRIGGERS = [
      # (observed max over 14 h was 474 s).
      lambda h: last_expr(h, "trafficviz_rollup_age", ">", 900), 2,
      "5分ロールアップが15分以上更新されていない。ダッシュボードが古いままになる。"),
-    ("traffic-viz: sFlow decode errors",
-     lambda h: last_expr(h, "trafficviz_decapd_decode_errors", ">", 0), 2,
-     "サンプルのデコードに失敗。装置側のファーム更新などで形式が変わった可能性。"),
-    ("traffic-viz: relay errors",
-     lambda h: last_expr(h, "trafficviz_decapd_relay_errors", ">", 0), 2,
-     "decapd から pmacct へ中継できていない。"),
     ("traffic-viz: health check stalled",
      lambda h: f"now()-last(/{h}/{MTIME_ITEM['key_']})>300", 4,
      "監視自体が止まっている。traffic-viz-health.timer を確認。"),

@@ -257,9 +257,10 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 6. Decapsulated MAP-E flows
 --
--- pmacct cannot decode IPv4-in-IPv6 for sFlow, so scripts/decapd.py parses the
--- sampled header itself and writes the inner 5-tuple here. Rows are deltas:
--- the writer adds into existing buckets with ON CONFLICT DO UPDATE.
+-- pmacct cannot decode IPv4-in-IPv6 for sFlow, so optional/decapd/decapd.py
+-- parses the sampled header itself and writes the inner 5-tuple here. Rows are
+-- deltas: the writer adds into existing buckets with ON CONFLICT DO UPDATE.
+-- The table stays empty unless the stack was installed with --with-decapd.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS flows_decap (
     bucket     TIMESTAMP NOT NULL,

@@ -91,19 +91,24 @@ cd /opt/traffic-viz && sudo ./scripts/install.sh
 > 片方だけだと「You do not currently have a default database configured」で
 > 全パネルが No data になる（実際に発生した）。
 
-## 3b. decapd（sFlow の入口）
+## 3b. sfacctd（sFlow の入口）
 
-`ルータ → 6343 decapd → 6345 sfacctd` の直列構成なので、
-**decapd が止まると可視化全体が止まる**。systemd が5秒で再起動する。
+標準構成では `ルータ → 6343 sfacctd` の直結。**sfacctd が止まると可視化全体が
+止まる**ので、`traffic-viz-health.timer` と Zabbix で監視する。
+
+```bash
+sudo systemctl status sfacctd --no-pager
+sudo journalctl -u sfacctd -f
+```
+
+`out` が使えないファームウェア向けのフォールバック（`--with-decapd`）では
+`ルータ → 6343 decapd → 6345 sfacctd` の直列になり、decapd も単一障害点になる。
 
 ```bash
 sudo systemctl status decapd --no-pager
 sudo journalctl -u decapd -f
 # 統計（datagrams / flow_samples / map_e_samples）が flush ログに出る
 ```
-
-`map_e_samples` が増えていれば MAP-E トラフィックを正しく拾えている。
-0 のままなら MAP-E のパケットが来ていない（正常なこともある）。
 
 ## 3c. 監視用メトリクス
 
@@ -114,7 +119,7 @@ Zabbix（zabbix）は collector のエージェント経由でこれを読む。
 
 ```bash
 sudo /opt/traffic-viz/scripts/health.sh      # 手動実行
-cat /var/lib/traffic-viz/metrics/trafficviz_decapd_active
+cat /var/lib/traffic-viz/metrics/trafficviz_sfacctd_active
 sudo journalctl -u traffic-viz-health -n 20 --no-pager
 ```
 

@@ -1,8 +1,8 @@
-# Zabbix による decapd 監視（ホスト外からの監視）
+# Zabbix による sfacctd 監視（ホスト外からの監視）
 
-Zabbix は **zabbix**、監視対象は **collector** の `decapd` / `sfacctd` /
-PostgreSQL / Grafana。Zabbix サーバが別ホストから collector のエージェントに
-問い合わせる構成（パッシブチェック）。
+Zabbix は **zabbix**、監視対象は **collector** の `sfacctd` / PostgreSQL / Grafana。
+Zabbix サーバが別ホストから collector のエージェントに問い合わせる構成
+（パッシブチェック）。
 
 ---
 
@@ -44,8 +44,6 @@ LAN 側 IP を使う場合は、collector のエージェントに
 
 ```
 collector:
-  decapd ──書き込み──▶ /var/lib/traffic-viz/decapd-stats.json
-                              │
   traffic-viz-health.timer（1分ごと）
     └─ scripts/health.sh ──▶ /var/lib/traffic-viz/metrics/<metric>  (1ファイル1値)
                               │
@@ -74,24 +72,11 @@ vfs.file.contents[/hostfs/var/lib/traffic-viz/metrics/<メトリクス名>]
 
 | メトリクス名 | 型 | 更新間隔 | 内容 / 正常値 |
 |-------------|-----|---------|--------------|
-| `trafficviz_decapd_active` | 数値(整数) | 60s | decapd が active なら 1 |
 | `trafficviz_sfacctd_active` | 数値(整数) | 60s | sfacctd が active なら 1 |
-| `trafficviz_decapd_flush_age` | 数値(整数) | 60s | **収集ループのハートビート**からの秒数（正常 < 90） |
-| `trafficviz_decapd_write_age` | 数値(整数) | 60s | 最後の DB 書き込みからの秒数（**参考値**。MAP-E 通信が無いと増えるのでアラートに使わない） |
-| `trafficviz_decapd_uptime` | 数値(整数) | 60s | プロセス稼働秒数 |
-| `trafficviz_decapd_datagrams` | 数値(整数) | 60s | 受信した sFlow データグラム累計 |
-| `trafficviz_decapd_flow_samples` | 数値(整数) | 60s | フローサンプル累計 |
-| `trafficviz_decapd_mape_samples` | 数値(整数) | 60s | MAP-E デキャップ成功累計 |
-| `trafficviz_decapd_decode_errors` | 数値(整数) | 60s | デコード失敗累計（0 が正常） |
-| `trafficviz_decapd_relay_errors` | 数値(整数) | 60s | pmacct への中継失敗累計（0 が正常） |
-| `trafficviz_decapd_flush_errors` | 数値(整数) | 60s | DB 書き込み失敗累計（0 が正常） |
-| `trafficviz_decapd_pending_keys` | 数値(整数) | 60s | 未書き込みの集約キー数 |
-| `trafficviz_decapd_relay_enabled` | 数値(整数) | 60s | 中継モードなら 1 |
 | `trafficviz_sflow_ingest_age` | 数値(整数) | 60s | pmacct の最終更新からの秒数（正常 < 120） |
 | `trafficviz_rollup_age` | 数値(整数) | 60s | 最新 5分バケットの開始からの秒数（正常 < 330） |
 | `trafficviz_db_ok` | 数値(整数) | 60s | DB に問い合わせできたら 1 |
 | `trafficviz_flows_1h` | 数値(整数) | 60s | 直近1時間の生フロー行数 |
-| `trafficviz_decap_rows` | 数値(整数) | 60s | `flows_decap` の総行数 |
 | `trafficviz_ip_asn_rows` | 数値(整数) | 60s | ASN 辞書のエントリ数 |
 | `trafficviz_tv-postgres_running` | 数値(整数) | 60s | コンテナ稼働 1/0 |
 | `trafficviz_tv-grafana_running` | 数値(整数) | 60s | コンテナ稼働 1/0 |
@@ -115,15 +100,10 @@ vfs.file.contents[/hostfs/var/lib/traffic-viz/metrics/<メトリクス名>]
 
 | 名前 | 条件式 | 深刻度 | 意図 |
 |------|--------|--------|------|
-| decapd 停止 | `last(/collector/trafficviz_decapd_active)<>1` |  Disaster | sFlow 入口の停止＝全可視化停止 |
-| sfacctd 停止 | `last(/collector/trafficviz_sfacctd_active)<>1` | High | 集約側の停止 |
-| sFlow 受信停止 | `last(/collector/trafficviz_sflow_ingest_age)>300` | High | 装置・経路・decapd のいずれかが異常 |
-| decapd 停止（ハートビート） | `last(/collector/trafficviz_decapd_flush_age)>180` | High | 収集ループが止まっている（3サイクル連続で欠落） |
+| sfacctd 停止 | `last(/collector/trafficviz_sfacctd_active)<>1` | High | sFlow 入口の停止＝可視化停止 |
+| sFlow 受信停止 | `last(/collector/trafficviz_sflow_ingest_age)>300` | High | 装置・経路・フィルタのいずれかが異常 |
 | DB 接続不可 | `last(/collector/trafficviz_db_ok)<>1` | High | PostgreSQL 障害 |
 | ロールアップ停止 | `last(/collector/trafficviz_rollup_age)>900` | Warning | タイマー停止（ダッシュボードが更新されない） |
-| デコードエラー | `last(/collector/trafficviz_decapd_decode_errors)>0` | Warning | サンプル形式の変化など |
-| 中継エラー | `last(/collector/trafficviz_decapd_relay_errors)>0` | Warning | pmacct へ渡せていない |
-| DB 書き込みエラー | `last(/collector/trafficviz_decapd_flush_errors)>0` | High | 権限・容量・接続の問題 |
 | 監視自体の停止 | `last(/collector/trafficviz_check_ok_mtime)>300` | High | health.sh / タイマーの停止 |
 | コンテナ停止 | `last(/collector/trafficviz_tv-postgres_running)<>1` | High | DB コンテナ停止 |
 | コンテナ停止 | `last(/collector/trafficviz_tv-grafana_running)<>1` | Warning | Grafana 停止 |
@@ -135,11 +115,9 @@ vfs.file.contents[/hostfs/var/lib/traffic-viz/metrics/<メトリクス名>]
 - `trafficviz_rollup_age` は 5分バケットの**開始時刻**基準なので、
   正常時でも 0〜300 秒の幅で振れます。実測の最大は 474 秒だったため、
   閾値は **900 秒**（15分）に設定しています
-- `trafficviz_decapd_mape_samples` は **0 の時間帯があって正常**です
-  （MAP-E の通信が無ければ増えない）。アラートには使わず、
-  グラフで傾向を見る用途に向きます
-- 再起動直後は `flush_age` が一時的に大きくなります
-  （初回 flush まで最大60秒）。`5m` の継続条件を付けると安定します
+- `trafficviz_sflow_ingest_age` は `flows` テーブルの最終更新なので、
+  トラフィックが完全に無い時間帯でも 300 秒を超えることはありません
+  （sfacctd は 60 秒ごとに flush する）。超えたら装置側を疑ってください
 
 ---
 
@@ -147,7 +125,7 @@ vfs.file.contents[/hostfs/var/lib/traffic-viz/metrics/<メトリクス名>]
 
 ### 5-A. 自動登録（推奨・実施済み）
 
-`scripts/zabbix-setup.py` がアイテム24個とトリガー12個を作成します。
+`scripts/zabbix-setup.py` がアイテム10個とトリガー7個を作成します。
 **冪等**なので、定義を変えて再実行しても重複しません（キー／説明で突き合わせて更新）。
 
 ```bash
@@ -167,7 +145,7 @@ ZABBIX_TOKEN=<APIトークン> python3 scripts/zabbix-setup.py --dry-run   # 事
 > **トリガー式はアイテムの「名前」ではなく「キー」を参照します。**
 > キーが `vfs.file.contents[...]` なので式が長くなりますが、これが正しい形式です。
 > ```
-> last(/collector/vfs.file.contents[/hostfs/var/lib/traffic-viz/metrics/trafficviz_decapd_active])<>1
+> last(/collector/vfs.file.contents[/hostfs/var/lib/traffic-viz/metrics/trafficviz_sfacctd_active])<>1
 > ```
 
 ### 5-B. 手動登録（Zabbix Web UI）
@@ -175,7 +153,7 @@ ZABBIX_TOKEN=<APIトークン> python3 scripts/zabbix-setup.py --dry-run   # 事
 1. **データ収集 → ホスト** で `collector` を開く
    （未登録ならエージェントの `ZBX_HOSTNAME=collector` と一致させる）
 2. **アイテム → アイテムの作成**
-   - 名前: `trafficviz decapd active`
+   - 名前: `trafficviz sfacctd active`
    - タイプ: `Zabbix エージェント`（パッシブ）
    - キー: 上表のとおり
    - 情報の型: `数値（符号なし）`
@@ -213,7 +191,7 @@ R=192.0.2.20          # collector の Tailscale IP
 
 docker exec $S zabbix_get -s $R -p 10050 -k "agent.ping"
 docker exec $S zabbix_get -s $R -p 10050 \
-  -k "vfs.file.contents[/hostfs/var/lib/traffic-viz/metrics/trafficviz_decapd_active]"
+  -k "vfs.file.contents[/hostfs/var/lib/traffic-viz/metrics/trafficviz_sfacctd_active]"
 docker exec $S zabbix_get -s $R -p 10050 \
   -k "vfs.file.time[/hostfs/var/lib/traffic-viz/metrics/trafficviz_check_ok,modify]"
 ```
@@ -221,10 +199,9 @@ docker exec $S zabbix_get -s $R -p 10050 \
 正常時の応答例:
 
 ```
-trafficviz_decapd_active       -> 1
-trafficviz_decapd_flush_age    -> 54
-trafficviz_decapd_mape_samples -> 1
+trafficviz_sfacctd_active      -> 1
 trafficviz_sflow_ingest_age    -> 38
+trafficviz_rollup_age          -> 137
 trafficviz_db_ok               -> 1
 ```
 
@@ -237,9 +214,8 @@ trafficviz_db_ok               -> 1
 | `Connection reset by peer` | パッシブチェックの送信元が `Server=` に無い | Tailscale IP で監視する。または collector のエージェントに `ZBX_PASSIVESERVERS` を追加 |
 | `ZBX_NOTSUPPORTED: Cannot obtain file ...` | メトリクスファイルが無い | `sudo systemctl start traffic-viz-health.service` を実行し、`traffic-viz-health.timer` を確認 |
 | 値が更新されない | health タイマー停止 | `systemctl list-timers traffic-viz-health.timer` / `journalctl -u traffic-viz-health` |
-| `decapd_mape_samples` が 0 のまま | MAP-E 通信が無い（正常なこともある） | 装置側 `show sflow information` で flow samples が増えているか確認 |
-| すべて 999999 | decapd の stats ファイルが無い | `journalctl -u decapd` で起動エラーを確認。`/var/lib/traffic-viz/` の権限（pmacct が書けるか） |
-| `flush stalled` が散発する | （2026-10-20 修正済み）旧実装は「最後に DB へ**書き込んだ**時刻」基準だったため、MAP-E 通信が少ない時間帯に誤発報した | 現在は収集ループの**ハートビート**基準。`trafficviz_decapd_flush_age` は常に 0〜90 秒に収まる |
+| `sflow_ingest_age` が 999999 | DB に接続できていない | `trafficviz_db_ok` と `docker ps` を確認 |
+| `ingest_age` だけ増え続ける | 装置から sFlow が届いていない | 装置側 `show sflow information` の `In:` / `Out:` の samples を確認 |
 
 ---
 
@@ -249,7 +225,7 @@ trafficviz_db_ok               -> 1
 
 zabbix の Zabbix には **既に「Discord 通知 (Warning 以上)」（action id=7）が有効**で、
 `Warning` 以上のすべてのトリガーを Discord へ送っています。traffic-viz の
-トリガーも自動的に含まれるため、**追加設定なしで decapd / sfacctd の障害が通知されます**。
+トリガーも自動的に含まれるため、**追加設定なしで sfacctd / DB の障害が通知されます**。
 
 | 項目 | 内容 |
 |------|------|
@@ -260,7 +236,8 @@ zabbix の Zabbix には **既に「Discord 通知 (Warning 以上)」（action 
 
 ### 動作確認（2026-10-20 00:26 実施）
 
-`trafficviz_decapd_active` を一時的に `0` にして発報させ、実際の配信を確認した。
+当時存在した `trafficviz_decapd_active` を一時的に `0` にして発報させ、実際の
+配信を確認した（そのトリガーは現在の定義からは削除済み）。
 
 ```
 00:26:21  SENT  Discord  Problem: traffic-viz: decapd stopped
@@ -273,7 +250,7 @@ zabbix の Zabbix には **既に「Discord 通知 (Warning 以上)」（action 
 ```
 
 通知ログは Zabbix の `alert.get` API で `status=1 (SENT)` を確認済み。
-**decapd / sfacctd の障害は Discord に届きます。**
+**sfacctd / DB の障害は Discord に届きます。**
 
 ### 専用アクションに分けたい場合
 

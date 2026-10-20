@@ -2,6 +2,12 @@
 """
 decapd - sFlow v5 collector that decodes MAP-E (IPv4-in-IPv6) samples.
 
+OPTIONAL. The default deployment samples the LAN port in both directions
+(`sflow sampling-rate <rate> in` and `<rate> out`), so downloads arrive as
+plain IPv4 with the LAN host as the destination and nothing needs to be
+decapsulated. Run this daemon only on firmware that cannot sample egress,
+where the WAN ingress side is the only way to see downloads.
+
 pmacct's sfacctd cannot decapsulate: its tunnel decoder is compiled out for
 sFlow (CONFIG-KEYS marks tunnel_0 as NO_SFACCTD). The sampled header, however,
 carries the inner IPv4 packet: with `sflow max-header-size 128` we get
@@ -13,9 +19,9 @@ This daemon only cares about flow samples whose L3 is IPv6 with next-header 4
 the work.
 
 Two deployment modes:
-  * the IX2207 sends to two collectors:
+  * the IX sends to two collectors:
         decapd --port 6344
-  * the IX2207 has a single collector:
+  * the IX has a single collector:
         # pmacct moves to 6345, decapd takes 6343 and relays everything
         decapd --port 6343 --forward-to 127.0.0.1:6345
 
