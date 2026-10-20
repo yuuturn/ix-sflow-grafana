@@ -40,22 +40,48 @@ device GigaEthernet0
 
 ## 3. なぜ LAN と WAN の両方が必要か
 
-**IX シリーズの `device` 単位 sFlow は ingress（そのポートに入ってくるパケット）のみ**を
-サンプリングする。実測で確認済み:
+`sflow sampling-rate` の第 2 引数で方向を指定できる。**省略すると `in` 扱い**になる。
 
-| ポート | ingress で見えるもの | 対応する通信 |
-|--------|---------------------|-------------|
-| `GigaEthernet2`（LAN） | LAN ホスト → インターネット | **アップロード** |
-| `GigaEthernet0`（WAN） | インターネット → LAN ホスト | **ダウンロード** |
+```
+RT1-komone(config-GigaEthernet2)# sflow sampling-rate 1000 ?
+  in    -- Apply flow sampling to input packets
+  out   -- Apply flow sampling to output packets
+```
 
-LAN だけ有効にした状態では、DB に「内部宛ての行」が **0 件**だった
-（= ダウンロードが一切記録されない）。WAN を追加して初めて inbound が出現した。
+本構成は **両ポートとも `in`** を有効にしている:
 
-両方とも ingress 同士なので**二重計上は原理的に発生しない**。
+| ポート | 方向 | サンプリングしている通信 |
+|--------|------|-------------------------|
+| `GigaEthernet2`（LAN） | `in` | LAN ホスト → インターネット（**アップロード**） |
+| `GigaEthernet0`（WAN） | `in` | インターネット → LAN ホスト（**ダウンロード**） |
 
-> 同じポートで ingress と egress の両方をサンプリングする実装の場合、
-> LAN と WAN の両方を有効にすると二重計上になる。本機では発生しないことを
-> データで確認済み（LAN 有効化時に egress 由来の行が無かったため）。
+両方とも `in` 同士なので**二重計上は原理的に発生しない**。
+
+LAN を `in` だけで有効にするとダウンロードは記録されない（LAN ポートにとって
+ダウンロードは `out` 方向のため）。実測でも DB の「内部宛ての行」が **0 件**で、
+WAN を追加して初めて inbound が出現した。
+
+### 代替案: LAN の `out` を採る
+
+`out` を使えば、ダウンロードを LAN ポートの egress で**素の IPv4 として**取得できる。
+この場合 §4 の `decapd`（MAP-E デカプセル）は不要になる。
+
+```
+device GigaEthernet2
+  sflow sampling-rate 1000 in     ! アップロード
+  sflow sampling-rate 1000 out    ! ダウンロード（IPv4 そのまま）
+```
+
+ただし **WAN の `in` と併用してはいけない**。ダウンロードが「WAN `in` の 4in6」と
+「LAN `out` の IPv4」で二重に記録される。`out` を採るなら WAN の設定は外す。
+
+| 構成 | ダウンロードの見え方 | 失われる情報 |
+|------|--------------------|-------------|
+| LAN `in` + WAN `in`（本リポジトリの既定） | 4in6 → `decapd` で復元 | — |
+| LAN `in` + LAN `out` | 素の IPv4 | NAPT 後のグローバル IPv4 / PSID、4in6 オーバーヘッド、BR 分布、ルータ自身の通信 |
+
+可視化だけが目的なら LAN `in` + `out` の方が構成は単純。本リポジトリは
+トンネル側も見たいため WAN `in` を既定にしている。
 
 ## 4. MAP-E 環境での制約（重要）
 
@@ -118,7 +144,7 @@ sudo tcpdump -ni eth0 "udp port 6343" -c 5
 | 症状 | 原因 | 対処 |
 |------|------|------|
 | `0 flow samples` のまま | `sampling-rate` 未設定 | `device GigaEthernetN` 配下で設定。グローバルには無い |
-| アップロードしか出ない | WAN 側の sFlow 未設定（ingress のみのため） | `device GigaEthernet0` にも設定 |
+| アップロードしか出ない | ダウンロードは LAN ポートの `out` 方向のため未取得 | LAN に `out` を足すか、WAN に `in` を設定（併用は二重計上） |
 | `sflow` がインターフェース配下で invalid | 設定箇所が違う | `device <物理IF>` 配下で設定する |
 | 流量が 1/1000 に見える | レート補正が効いていない | コレクタ側 `sfacctd_renormalize: true` を確認 |
 | IPv4 のダウンロードが粗い | MAP-E カプセル化 | 仕様。`MAP-E (IPv4-in-IPv6)` ラベルで表示される |

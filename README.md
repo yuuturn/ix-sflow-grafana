@@ -127,8 +127,10 @@ TRUNCATE ip_asn;   -- 次の refresh_ip_asn() で辞書が再構築される
 要点:
 
 - sFlow は **`device`（物理ポート）配下**で設定する（インターフェース配下ではない）
-- **LAN と WAN の両方**で有効にする（1 ポートあたり ingress のみのため、
-  LAN 側 = アップロード、WAN 側 = ダウンロード）
+- `sflow sampling-rate` の第 2 引数で方向を指定する（`in` / `out`、省略時は `in`）
+- 本構成は **LAN `in`（アップロード）+ WAN `in`（ダウンロード）**。
+  ダウンロードを LAN の `out` で採る構成も可能（その場合 `decapd` は不要。
+  ただし WAN `in` と併用すると二重計上になる）
 - `max-header-size 128` にすると MAP-E の内側 IPv4 まで取れる
 
 ## ダッシュボード
