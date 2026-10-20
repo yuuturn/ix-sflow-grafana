@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily sFlow retention job
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+Persistent=true
+Unit=traffic-viz-prune.service
+
+[Install]
+WantedBy=timers.target

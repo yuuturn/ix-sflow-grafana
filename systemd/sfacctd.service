@@ -1,0 +1,27 @@
+[Unit]
+Description=sFlow collector (pmacct sfacctd) forwarding to PostgreSQL
+Documentation=file:///opt/traffic-viz/docs/design.md
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=pmacct
+Group=pmacct
+Environment=TZ=UTC
+RuntimeDirectory=pmacct
+RuntimeDirectoryMode=0750
+LogsDirectory=pmacct
+LogsDirectoryMode=0750
+ExecStartPre=/opt/traffic-viz/scripts/wait-db.sh
+ExecStart=/usr/sbin/sfacctd -f /etc/pmacct/sfacctd.conf
+# SIGINT makes pmacct flush its cache to the database before exiting
+KillSignal=SIGINT
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

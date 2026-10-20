@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh sFlow rollup and IP-ASN dictionary
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/traffic-viz/scripts/refresh-rollup.sh

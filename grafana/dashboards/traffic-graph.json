@@ -1,0 +1,295 @@
+{
+  "uid": "traffic-graph",
+  "title": "トラフィック分析 (AS別 積み上げ / サマリ)",
+  "description": "Akvorado の Stacked areas 相当。方向を切り替えると、受信なら送信元AS、送信なら宛先ASで積み上げる。",
+  "tags": [
+    "traffic",
+    "sflow",
+    "asn"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "direction",
+        "label": "方向",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "trafficdb"
+        },
+        "definition": "SELECT 'all' AS __value, 'すべて' AS __text UNION ALL SELECT 'inbound', 'ダウンロード(外部→自分)' UNION ALL SELECT 'outbound', 'アップロード(自分→外部)'",
+        "query": "SELECT 'all' AS __value, 'すべて' AS __text UNION ALL SELECT 'inbound', 'ダウンロード(外部→自分)' UNION ALL SELECT 'outbound', 'アップロード(自分→外部)'",
+        "current": {
+          "selected": true,
+          "text": "ダウンロード(外部→自分)",
+          "value": "inbound"
+        },
+        "options": [],
+        "refresh": 1,
+        "sort": 0,
+        "includeAll": false,
+        "multi": false,
+        "hide": 0
+      },
+      {
+        "name": "topn",
+        "label": "表示するAS数",
+        "type": "custom",
+        "query": "5,8,10,15,20",
+        "current": {
+          "selected": true,
+          "text": "10",
+          "value": "10"
+        },
+        "options": [
+          {
+            "text": "5",
+            "value": "5",
+            "selected": false
+          },
+          {
+            "text": "8",
+            "value": "8",
+            "selected": false
+          },
+          {
+            "text": "10",
+            "value": "10",
+            "selected": true
+          },
+          {
+            "text": "15",
+            "value": "15",
+            "selected": false
+          },
+          {
+            "text": "20",
+            "value": "20",
+            "selected": false
+          }
+        ],
+        "includeAll": false,
+        "multi": false,
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "AS別 トラフィック推移 (積み上げ面)",
+      "description": "各 AS のスループットを積み上げたもの。受信なら送信元AS、送信なら宛先AS。",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 15,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "decimals": 2,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 0,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "linear",
+            "gradientMode": "none",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisSoftMin": 0,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH base AS (  SELECT bucket AS ts,         CASE WHEN direction = 'inbound' THEN src_asn ELSE dst_asn END AS asn,         CASE WHEN direction = 'inbound' THEN src_org ELSE dst_org END AS org,         bytes  FROM flow_5m  WHERE $__timeFilter(bucket)    AND direction IN ('inbound','outbound')    AND ('$direction' = 'all' OR direction = '$direction')), labelled AS (  SELECT ts, 'AS' || asn || ' ' || org AS label, bytes FROM base WHERE asn > 0  UNION ALL  SELECT ts, '(未解決)' AS label, bytes FROM base WHERE asn <= 0), tot AS (SELECT label, sum(bytes) AS t FROM labelled GROUP BY 1),top AS (SELECT label FROM tot ORDER BY t DESC LIMIT $topn),final AS (  SELECT l.ts, CASE WHEN tp.label IS NULL THEN 'その他' ELSE l.label END AS metric, l.bytes  FROM labelled l LEFT JOIN top tp ON tp.label = l.label) SELECT ts AS time, metric, sum(bytes) * 8 / 300.0 AS value FROM final GROUP BY 1, 2 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "AS別 サマリ",
+      "description": "MIN / MAX / LAST / AVERAGE / ~95TH は選択した集計窓ごとの bps。TOTAL は期間内の合計転送量。",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "right",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "AS"
+            },
+            "properties": [
+              {
+                "id": "custom.align",
+                "value": "left"
+              },
+              {
+                "id": "custom.width",
+                "value": 320
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(MIN|MAX|LAST|AVERAGE|~95TH)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "TOTAL"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gradient-gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "MAX"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "TOTAL",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH base AS (  SELECT bucket AS ts,         CASE WHEN direction = 'inbound' THEN src_asn ELSE dst_asn END AS asn,         CASE WHEN direction = 'inbound' THEN src_org ELSE dst_org END AS org,         bytes  FROM flow_5m  WHERE $__timeFilter(bucket)    AND direction IN ('inbound','outbound')    AND ('$direction' = 'all' OR direction = '$direction')), labelled AS (  SELECT ts, 'AS' || asn || ': ' || org AS label, bytes FROM base WHERE asn > 0  UNION ALL  SELECT ts, '(未解決)' AS label, bytes FROM base WHERE asn <= 0), per_bucket AS (  SELECT label, ts, sum(bytes) * 8 / 300.0 AS bps, sum(bytes) AS bytes  FROM labelled GROUP BY 1, 2) SELECT label AS \"AS\",        min(bps) AS \"MIN\",        max(bps) AS \"MAX\",        (array_agg(bps ORDER BY ts DESC))[1] AS \"LAST\",        avg(bps) AS \"AVERAGE\",        percentile_cont(0.95) WITHIN GROUP (ORDER BY bps) AS \"~95TH\",        sum(bytes) AS \"TOTAL\" FROM per_bucket GROUP BY label ORDER BY sum(bytes) DESC LIMIT $topn"
+        }
+      ]
+    }
+  ],
+  "annotations": {
+    "list": []
+  }
+}

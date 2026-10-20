@@ -1,0 +1,28 @@
+apiVersion: 1
+
+datasources:
+  - name: TrafficDB
+    uid: trafficdb
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: postgres:5432
+    database: traffic
+    user: grafana
+    secureJsonData:
+      password: ${PG_GRAFANA_PASSWORD}
+    jsonData:
+      # Grafana 13's editor and query path read the database from jsonData;
+      # the top-level `database` above is kept for the older backend model.
+      # Both must be set or the UI reports
+      # "You do not currently have a default database configured".
+      database: traffic
+      sslmode: disable
+      postgresVersion: 1700
+      timescaledb: false
+      timezone: UTC
+      maxOpenConns: 4
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      queryTimeout: 60s
+    isDefault: true
+    editable: false

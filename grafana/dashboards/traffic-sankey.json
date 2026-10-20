@@ -1,0 +1,704 @@
+{
+  "uid": "traffic-sankey",
+  "title": "トラフィック可視化 (sFlow / NEC IX)",
+  "description": "NEC UNIVERGE IX の sFlow を sfacctd で収集し PostgreSQL 経由で可視化する。SRC -> DST(AS) -> サービス の Sankey。",
+  "tags": [
+    "traffic",
+    "sflow",
+    "pmacct"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "direction",
+        "label": "方向",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "trafficdb"
+        },
+        "definition": "SELECT 'all' AS __value, 'すべて' AS __text UNION ALL SELECT 'outbound', '送信(内部→外部)' UNION ALL SELECT 'inbound', '受信(外部→内部)' UNION ALL SELECT 'internal', '内部'",
+        "query": "SELECT 'all' AS __value, 'すべて' AS __text UNION ALL SELECT 'outbound', '送信(内部→外部)' UNION ALL SELECT 'inbound', '受信(外部→内部)' UNION ALL SELECT 'internal', '内部'",
+        "current": {
+          "selected": true,
+          "text": "すべて",
+          "value": "all"
+        },
+        "options": [],
+        "refresh": 1,
+        "sort": 0,
+        "includeAll": false,
+        "multi": false,
+        "hide": 0
+      },
+      {
+        "name": "topn",
+        "label": "Sankey 表示ノード数",
+        "type": "custom",
+        "query": "8,12,20,30",
+        "current": {
+          "text": "12",
+          "value": "12",
+          "selected": true
+        },
+        "options": [
+          {
+            "text": "8",
+            "value": "8",
+            "selected": false
+          },
+          {
+            "text": "12",
+            "value": "12",
+            "selected": true
+          },
+          {
+            "text": "20",
+            "value": "20",
+            "selected": false
+          },
+          {
+            "text": "30",
+            "value": "30",
+            "selected": false
+          }
+        ],
+        "includeAll": false,
+        "multi": false,
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "現在のスループット (直近5分の平均)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "decimals": 2,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT sum(bytes) * 8 / 300.0 AS \"合計\" FROM flow_5m WHERE bucket = (SELECT max(bucket) FROM flow_5m WHERE $__timeFilter(bucket))"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "ダウンロード (直近5分の平均)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "decimals": 2,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT sum(bytes) * 8 / 300.0 AS \"ダウンロード\" FROM flow_5m WHERE direction = 'inbound' AND bucket = (SELECT max(bucket) FROM flow_5m WHERE $__timeFilter(bucket))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "アップロード (直近5分の平均)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "decimals": 2,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT sum(bytes) * 8 / 300.0 AS \"アップロード\" FROM flow_5m WHERE direction = 'outbound' AND bucket = (SELECT max(bucket) FROM flow_5m WHERE $__timeFilter(bucket))"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "選択期間の合計転送量",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 2,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT sum(bytes) AS \"合計\" FROM flow_5m WHERE $__timeFilter(bucket) AND ('$direction' IN ('all','すべて') OR direction = '$direction')"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "ae3e-plotly-panel",
+      "title": "Sankey: 送信元 → 宛先(AS) → サービス",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 19,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "options": {
+        "title": "",
+        "onclick": "",
+        "config": {
+          "displayModeBar": false,
+          "responsive": true
+        },
+        "layout": {
+          "font": {
+            "size": 11,
+            "color": "#d8d9da"
+          },
+          "margin": {
+            "l": 10,
+            "r": 10,
+            "t": 10,
+            "b": 10
+          },
+          "paper_bgcolor": "rgba(0,0,0,0)",
+          "plot_bgcolor": "rgba(0,0,0,0)"
+        },
+        "script": "// Rows are (source, target, value) already chained by sankey_flows():\n//   S|<host or AS>  ->  D|<host or AS>  ->  P|<port>\nconst fields = data.series[0].fields;\nconst col = (i) => {\n  const v = fields[i].values;\n  return Array.from(v.buffer ? v.buffer : v);\n};\nconst src = col(0);\nconst tgt = col(1);\nconst val = col(2).map(Number);\n\nconst nodes = Array.from(new Set(src.concat(tgt)));\nconst index = {};\nnodes.forEach((n, i) => { index[n] = i; });\n\nconst shortLabel = (n) => n.replace(/^[SDP]\\|/, '');\nconst nodeColor = (n) => n.charAt(0) === 'S' ? '#5794f2'\n                     : n.charAt(0) === 'D' ? '#f2495c'\n                     : '#ff9830';\n\nconst total = val.reduce((a, b) => a + b, 0) || 1;\n\nreturn {\n  data: [{\n    type: 'sankey',\n    orientation: 'h',\n    arrangement: 'snap',\n    valueformat: '.3s',\n    valuesuffix: ' B',\n    node: {\n      label: nodes.map(shortLabel),\n      color: nodes.map(nodeColor),\n      pad: 22,\n      thickness: 14,\n      line: { color: 'rgba(0,0,0,0.4)', width: 0.5 },\n      hovertemplate: '%{label}<br>%{value:.3s} B<extra></extra>'\n    },\n    link: {\n      source: src.map((s) => index[s]),\n      target: tgt.map((t) => index[t]),\n      value: val,\n      color: 'rgba(140,160,200,0.35)',\n      hovertemplate: '%{source.label} → %{target.label}<br>%{value:.3s} B<extra></extra>'\n    }\n  }],\n  layout: { font: { size: 11, color: '#d8d9da' } },\n  config: { displayModeBar: false, responsive: true }\n};\n"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT source, target, value FROM sankey_flows($__timeFrom()::timestamp, $__timeTo()::timestamp, '$direction', $topn)"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "スループット推移 (5分平均)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto"
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT bucket AS time, sum(CASE WHEN direction = 'inbound' THEN bytes ELSE 0 END) * 8 / 300.0 AS \"ダウンロード\", sum(CASE WHEN direction = 'outbound' THEN bytes ELSE 0 END) * 8 / 300.0 AS \"アップロード\" FROM flow_5m WHERE $__timeFilter(bucket) GROUP BY bucket ORDER BY bucket"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "宛先AS別 スループット推移 (上位8)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto"
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH top AS (SELECT dst_asn, dst_org, sum(bytes) AS b FROM flow_5m WHERE $__timeFilter(bucket) AND dst_host = '0.0.0.0'::inet AND ('$direction' IN ('all','すべて') OR direction = '$direction') GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 8) SELECT g.bucket AS time, 'AS' || g.dst_asn || ' ' || g.dst_org AS metric, sum(g.bytes) * 8 / 300.0 AS value FROM flow_5m g JOIN top t ON t.dst_asn = g.dst_asn WHERE $__timeFilter(g.bucket) AND g.dst_host = '0.0.0.0'::inet GROUP BY g.bucket, metric ORDER BY g.bucket"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "宛先ランキング",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 31
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "平均 (Mbps)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Mbps"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gradient-gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "転送量"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "転送量",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE WHEN dst_host <> '0.0.0.0'::inet THEN host(dst_host) WHEN dst_asn > 0 THEN 'AS' || dst_asn || ' ' || dst_org WHEN dst_org <> '' THEN dst_org ELSE '(未解決)' END AS \"宛先\", sum(bytes) * 8 / 300.0 / 1000000 AS \"平均 (Mbps)\", sum(bytes) AS \"転送量\" FROM flow_5m WHERE $__timeFilter(bucket) AND ('$direction' IN ('all','すべて') OR direction = '$direction') GROUP BY 1 ORDER BY sum(bytes) DESC LIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "送信元ランキング",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 31
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "平均 (Mbps)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Mbps"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gradient-gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "転送量"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "転送量",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE WHEN src_host <> '0.0.0.0'::inet THEN host(src_host) WHEN src_asn > 0 THEN 'AS' || src_asn || ' ' || src_org WHEN src_org <> '' THEN src_org ELSE '(未解決)' END AS \"送信元\", sum(bytes) * 8 / 300.0 / 1000000 AS \"平均 (Mbps)\", sum(bytes) AS \"転送量\" FROM flow_5m WHERE $__timeFilter(bucket) AND ('$direction' IN ('all','すべて') OR direction = '$direction') GROUP BY 1 ORDER BY sum(bytes) DESC LIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "table",
+      "title": "サービスポートランキング",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "trafficdb"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "平均 (Mbps)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Mbps"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gradient-gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "転送量"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "転送量",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE svc_port WHEN 443 THEN '443 https' WHEN 80 THEN '80 http' WHEN 53 THEN '53 dns' WHEN 123 THEN '123 ntp' WHEN 993 THEN '993 imaps' WHEN 853 THEN '853 dot' WHEN 0 THEN '(不明)' ELSE svc_port::text END AS \"サービス\", sum(bytes) * 8 / 300.0 / 1000000 AS \"平均 (Mbps)\", sum(bytes) AS \"転送量\" FROM flow_5m WHERE $__timeFilter(bucket) AND ('$direction' IN ('all','すべて') OR direction = '$direction') GROUP BY 1 ORDER BY sum(bytes) DESC LIMIT 20"
+        }
+      ]
+    }
+  ],
+  "annotations": {
+    "list": []
+  }
+}

@@ -1,0 +1,86 @@
+# Traffic visualization stack for sFlow from NEC UNIVERGE IX2207
+#   sfacctd (host, systemd) --Pgsql--> PostgreSQL --SQL--> Grafana (Sankey)
+#
+# Deployed on collector (192.0.2.10). Everything runs in UTC; Grafana renders in
+# the browser's timezone (Asia/Tokyo).
+name: traffic-viz
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: tv-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: traffic
+      POSTGRES_USER: tvadmin
+      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD:?set in .env}
+      # consumed by sql/init/01-roles.sh
+      PMACCT_PASSWORD: ${PG_PMACCT_PASSWORD:?set in .env}
+      GRAFANA_PASSWORD: ${PG_GRAFANA_PASSWORD:?set in .env}
+      TZ: UTC
+      PGTZ: UTC
+    command:
+      - postgres
+      - -c
+      - timezone=UTC
+      - -c
+      - log_min_duration_statement=2000
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - max_connections=40
+      # keep the table small: purge handled by a maintenance script, not autovacuum
+      - -c
+      - autovacuum_naptime=60s
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tvadmin -d traffic"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  grafana:
+    image: grafana/grafana:13.2.4-slim
+    container_name: tv-grafana
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://192.0.2.10:3000/}
+      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN:-192.0.2.10}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/traffic-sankey.json
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Grafana has no core Sankey panel; Plotly (community) renders one and is
+      # provisioned entirely from dashboard JSON, so no GUI clicking is needed.
+      GF_INSTALL_PLUGINS: ${GRAFANA_PLUGINS:-ae3e-plotly-panel}
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: ${GRAFANA_PLUGINS:-ae3e-plotly-panel}
+      # consumed by provisioning/datasources/postgres.yml
+      PG_GRAFANA_PASSWORD: ${PG_GRAFANA_PASSWORD}
+      TZ: UTC
+    ports:
+      - "0.0.0.0:3000:3000"
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+
+volumes:
+  pgdata:
+  grafanadata:

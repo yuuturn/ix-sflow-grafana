@@ -1,0 +1,9 @@
+[Unit]
+Description=Update IP-to-ASN ranges from iptoasn.com
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/traffic-viz/scripts/update-asn.sh
+TimeoutStartSec=30min

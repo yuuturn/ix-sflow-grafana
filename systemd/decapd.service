@@ -1,0 +1,22 @@
+[Unit]
+Description=MAP-E decapsulation collector (sFlow IPv4-in-IPv6 -> flows_decap)
+Documentation=file:///opt/traffic-viz/docs/design.md
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=pmacct
+Group=pmacct
+Environment=TZ=UTC
+EnvironmentFile=/etc/traffic-viz/decapd.env
+ExecStartPre=/opt/traffic-viz/scripts/wait-db.sh
+ExecStart=/usr/bin/python3 /opt/traffic-viz/scripts/decapd.py $DECAPD_ARGS
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

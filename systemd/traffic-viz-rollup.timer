@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh sFlow rollup every 2 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=traffic-viz-rollup.service
+
+[Install]
+WantedBy=timers.target

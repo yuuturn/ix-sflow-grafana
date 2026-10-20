@@ -1,0 +1,8 @@
+[Unit]
+Description=Prune old sFlow tables
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/traffic-viz/scripts/prune.sh

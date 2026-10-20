@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly IP-to-ASN refresh
+
+[Timer]
+OnCalendar=Sun *-*-* 03:15:00
+Persistent=true
+Unit=traffic-viz-asn.service
+
+[Install]
+WantedBy=timers.target
