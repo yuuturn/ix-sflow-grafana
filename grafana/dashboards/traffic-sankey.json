@@ -377,7 +377,7 @@
     {
       "id": 12,
       "type": "timeseries",
-      "title": "宛先AS別 スループット推移 (上位8)",
+      "title": "通信相手AS別 スループット推移 (上位8)",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "trafficdb"
@@ -430,7 +430,7 @@
           "refId": "A",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH top AS (SELECT dst_asn, dst_org, sum(bytes) AS b FROM flow_5m WHERE $__timeFilter(bucket) AND dst_host = '0.0.0.0'::inet AND ('$direction' IN ('all','すべて') OR direction = '$direction') GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 8) SELECT g.bucket AS time, 'AS' || g.dst_asn || ' ' || g.dst_org AS metric, sum(g.bytes) * 8 / 300.0 AS value FROM flow_5m g JOIN top t ON t.dst_asn = g.dst_asn WHERE $__timeFilter(g.bucket) AND g.dst_host = '0.0.0.0'::inet GROUP BY g.bucket, metric ORDER BY g.bucket"
+          "rawSql": "WITH base AS (\n  SELECT bucket,\n         CASE WHEN direction = 'inbound' THEN src_asn ELSE dst_asn END AS asn,\n         CASE WHEN direction = 'inbound' THEN src_org ELSE dst_org END AS org,\n         bytes\n  FROM flow_5m\n  WHERE $__timeFilter(bucket)\n    AND ('$direction' IN ('all','すべて') OR direction = '$direction')\n    AND direction IN ('inbound','outbound')\n),\nknown AS (SELECT * FROM base WHERE asn > 0),\ntop8 AS (SELECT asn FROM known GROUP BY 1 ORDER BY sum(bytes) DESC LIMIT 8)\nSELECT k.bucket AS time,\n       'AS' || k.asn || ' ' || min(k.org) AS metric,\n       sum(k.bytes) * 8 / 300.0 AS value\nFROM known k\nJOIN top8 t ON t.asn = k.asn\nGROUP BY k.bucket, k.asn\nORDER BY 1"
         }
       ]
     },
