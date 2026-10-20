@@ -11,6 +11,13 @@ Raspberry Pi 4 クラスの小型機器で動く軽量な構成で実現しま�
 - 商用ライセンス不要（IP→ASN は [iptoasn.com](https://iptoasn.com/) を使用）
 - Zabbix 監視のアイテム／トリガー定義付き
 
+## スクリーンショット
+
+![Sankey ダッシュボード](docs/images/sample-sankey.png)
+
+Sankey（送信元 → 宛先 AS → サービス）と、その下のスループット推移・AS 別ランキング。
+左端の送信元ホスト名と IP は環境依存のためモザイク処理しています。
+
 ## 構成
 
 ```
